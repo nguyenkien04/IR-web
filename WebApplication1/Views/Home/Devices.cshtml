@@ -1,0 +1,320 @@
+@using System.Data
+@model DataTable
+
+@{
+    ViewData["Title"] = "Devices Management";
+}
+
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold" id="pageTitle">Devices Management</h3>
+        <p class="text-muted m-0" id="moduleSubtitle">Quản lý thiết bị độc lập theo từng module ESP32.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary px-3 py-2 rounded-3 fw-semibold" onclick="location.href='/Home/Index'">
+            <i class="bi bi-arrow-left me-1"></i> Quay lại Dashboard
+        </button>
+        <button class="btn btn-primary px-4 py-2 rounded-3 fw-semibold shadow-sm" data-bs-toggle="modal" data-bs-target="#addDeviceModal" onclick="loadAvailableDevices()">
+            <i class="bi bi-plus-lg me-1"></i> Add Device
+        </button>
+    </div>
+</div>
+
+<!-- 3 Thẻ Thống Kê -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <h2 class="fw-bold m-0" id="totalCount">0</h2>
+                    <small class="text-muted fw-medium">Total Devices</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <h2 class="fw-bold m-0 text-success" id="onlineCount">0</h2>
+                    <small class="text-muted fw-medium">Online</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <h2 class="fw-bold m-0 text-muted" id="offlineCount">0</h2>
+                    <small class="text-muted fw-medium">Offline</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Grid Cards Devices (Hiển thị danh sách thiết bị độc lập của module) -->
+<div class="row g-4" id="moduleDeviceListArea">
+    <!-- Nội dung sẽ được render bằng JavaScript động theo hwId -->
+</div>
+
+<!-- Trạng thái trống -->
+<div id="emptyState" class="col-12 text-center py-5 d-none">
+    <i class="bi bi-display text-muted fs-1 mb-3 d-block"></i>
+    <h5 class="text-muted">Chưa có thiết bị nào thuộc module này</h5>
+    <p class="text-secondary small">Nhấn vào nút "+ Add Device" để thêm thiết bị điều khiển cho module này.</p>
+</div>
+
+<!-- Modal Add Device (Cấu trúc 3 dòng thông minh) -->
+<div class="modal fade" id="addDeviceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold">Thêm thiết bị mới cho Module</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+
+                <!-- Dòng 1: Chọn Loại thiết bị -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">1. Loại thiết bị:</label>
+                    <select id="ddlDeviceType" class="form-select py-2 mb-2" onchange="onDeviceTypeChange()">
+                        <option value="">-- Chọn loại thiết bị --</option>
+                        <option value="TV">TV (Tivi)</option>
+                        <option value="AC">Điều hòa (Air Conditioner)</option>
+                        <option value="Projector">Máy chiếu (Projector)</option>
+                        <option value="Fan">Quạt điện (Fan)</option>
+                        <option value="CUSTOM">+ Thêm thiết bị mới (Tự viết)</option>
+                    </select>
+                    <input type="text" id="txtCustomType" class="form-control py-2 d-none" placeholder="Nhập loại thiết bị mới (Ví dụ: Soundbar, Đèn...)">
+                </div>
+
+                <!-- Dòng 2: Hãng sản xuất / Tên thiết bị -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">2. Hãng sản xuất / Thiết bị:</label>
+                    <select id="ddlBrandExisting" class="form-select py-2">
+                        <option value="">-- Vui lòng chọn loại thiết bị trước --</option>
+                    </select>
+                    <input type="text" id="txtCustomBrand" class="form-control py-2 d-none" placeholder="Nhập tên hãng hoặc thiết bị (Ví dụ: Sony, Daikin...)">
+                </div>
+
+                <!-- Dòng 3: Miêu tả -->
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">3. Miêu tả (Vị trí / Ghi chú):</label>
+                    <input type="text" id="deviceDescription" class="form-control py-2" placeholder="Ví dụ: Phòng khách, Phòng ngủ...">
+                </div>
+
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary rounded-3 px-4 fw-semibold" onclick="submitSmartAddDevice()">Save Device</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+    <div id="statusToast" class="toast align-items-center text-white bg-success border-0" role="alert">
+        <div class="d-flex">
+            <div class="toast-body" id="toastMessage">Thông báo</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Lấy hwId từ URL (Ví dụ: /Home/Devices?hwId=ESP32_1234)
+    const urlParams = new URLSearchParams(window.location.search);
+    const currentHwId = urlParams.get('hwId') || 'DEFAULT_MODULE';
+
+    // Hiển thị tên module lên tiêu đề trang
+    document.getElementById('pageTitle').textContent = `Devices - Module: ${currentHwId}`;
+    document.getElementById('moduleSubtitle').textContent = `Quản lý thiết bị độc lập thuộc phần cứng ESP32 (${currentHwId})`;
+
+    // Khóa lưu trữ LocalStorage riêng biệt cho từng module
+    const storageKey = `module_devices_${currentHwId}`;
+
+    let allAvailableDevices = [];
+
+    function getModuleDevices() {
+        return JSON.parse(localStorage.getItem(storageKey)) || [];
+    }
+
+    function saveModuleDevices(devices) {
+        localStorage.setItem(storageKey, JSON.stringify(devices));
+        renderModuleDevices();
+    }
+
+    // Render danh sách thiết bị của riêng module này ra giao diện
+    function renderModuleDevices() {
+        const devices = getModuleDevices();
+        const area = document.getElementById('moduleDeviceListArea');
+        const emptyState = document.getElementById('emptyState');
+
+        document.getElementById('totalCount').textContent = devices.length;
+        document.getElementById('onlineCount').textContent = devices.length;
+        document.getElementById('offlineCount').textContent = 0;
+
+        area.innerHTML = '';
+        if (devices.length === 0) {
+            emptyState.classList.remove('d-none');
+            return;
+        }
+        emptyState.classList.add('d-none');
+
+        devices.forEach((dev, index) => {
+            // Lấy chính xác DeviceId được lưu trong đối tượng (hỗ trợ nhiều tên trường khác nhau)
+            let devId = dev.id || dev.deviceId || dev.Id || 0;
+
+            let col = document.createElement('div');
+            col.className = 'col-md-4';
+            col.innerHTML = `
+                <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100 position-relative">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div class="p-3 bg-light rounded-4 text-dark fs-3 border">
+                            <i class="bi bi-tv"></i>
+                        </div>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+                            <i class="bi bi-circle-fill me-1" style="font-size: 0.4rem;"></i> Online
+                        </span>
+                    </div>
+
+                    <h5 class="fw-bold mb-1">${dev.name}</h5>
+                    <p class="text-muted small mb-4">${dev.room || 'Chưa phân phòng'}</p>
+
+                    <div class="d-flex gap-2 mt-auto">
+                        <!-- ĐÃ ĐỒNG BỘ: Truyền chính xác devId (lấy từ cơ sở dữ liệu SQL) sang trang Remote -->
+                        <button class="btn btn-primary w-100 rounded-3 fw-semibold py-2" onclick="openRemoteForModule('${currentHwId}', ${devId})">
+                            Open Remote
+                        </button>
+                        <button class="btn btn-danger-subtle text-danger border-0 px-3 rounded-3" onclick="deleteModuleDevice(${index})">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            `;
+            area.appendChild(col);
+        });
+    }
+
+    // Hàm chuyển sang trang Remote độc lập có gửi kèm deviceId chính xác
+    function openRemoteForModule(hwId, deviceId) {
+        window.location.href = `/Home/Remote?hwId=${hwId}&deviceId=${deviceId}`;
+    }
+
+    // Tải danh sách thiết bị mẫu từ DB (hoặc danh sách sẵn có)
+    function loadAvailableDevices() {
+        document.getElementById('ddlDeviceType').value = "";
+        document.getElementById('deviceDescription').value = "";
+        document.getElementById('txtCustomType').value = "";
+        document.getElementById('txtCustomBrand').value = "";
+
+        let ddlBrand = document.getElementById('ddlBrandExisting');
+        ddlBrand.innerHTML = '<option value="">-- Vui lòng chọn loại thiết bị trước --</option>';
+
+        ddlBrand.classList.remove('d-none');
+        document.getElementById('txtCustomBrand').classList.add('d-none');
+        document.getElementById('txtCustomType').classList.add('d-none');
+
+        fetch('/Home/GetAvailableDevicesFromDB')
+            .then(res => res.json())
+            .then(data => {
+                allAvailableDevices = data;
+            })
+            .catch(err => console.error("Lỗi tải CSDL:", err));
+    }
+
+    function onDeviceTypeChange() {
+        const selectedType = document.getElementById('ddlDeviceType').value;
+        const ddlBrand = document.getElementById('ddlBrandExisting');
+        const txtCustomType = document.getElementById('txtCustomType');
+        const txtCustomBrand = document.getElementById('txtCustomBrand');
+
+        if (selectedType === "CUSTOM") {
+            txtCustomType.classList.remove('d-none');
+            txtCustomType.value = "";
+            ddlBrand.classList.add('d-none');
+            txtCustomBrand.classList.remove('d-none');
+            txtCustomBrand.value = "";
+        } else {
+            txtCustomType.classList.add('d-none');
+            ddlBrand.classList.remove('d-none');
+            txtCustomBrand.classList.add('d-none');
+
+            ddlBrand.innerHTML = '<option value="">-- Chọn hãng / thiết bị --</option>';
+            if (!selectedType) return;
+
+            const filtered = allAvailableDevices.filter(item =>
+                item.deviceName && item.deviceName.toLowerCase().includes(selectedType.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                let opt = document.createElement('option');
+                opt.value = "";
+                opt.text = "Không có sẵn (Hãy chọn 'Thêm thiết bị mới')";
+                ddlBrand.appendChild(opt);
+            } else {
+                filtered.forEach(item => {
+                    let opt = document.createElement('option');
+                    opt.value = item.deviceId;
+                    opt.text = item.deviceName + (item.description ? " (" + item.description + ")" : "");
+                    ddlBrand.appendChild(opt);
+                });
+            }
+        }
+    }
+
+    // Thêm thiết bị mới vào module hiện tại (Lưu kèm ID từ CSDL SQL)
+    function submitSmartAddDevice() {
+        const selectedType = document.getElementById('ddlDeviceType').value;
+        const description = document.getElementById('deviceDescription').value.trim();
+        let deviceName = "";
+        let selectedDeviceId = 0;
+
+        if (!selectedType) {
+            alert("Vui lòng chọn loại thiết bị ở dòng 1!");
+            return;
+        }
+
+        if (selectedType === "CUSTOM") {
+            const customType = document.getElementById('txtCustomType').value.trim();
+            const customBrand = document.getElementById('txtCustomBrand').value.trim();
+            if (!customType || !customBrand) {
+                alert("Vui lòng nhập đầy đủ thông tin ở dòng 1 và dòng 2!");
+                return;
+            }
+            deviceName = `${customBrand} ${customType}`;
+            selectedDeviceId = Date.now(); // ID tạm cho custom device nếu chưa có trong SQL
+        } else {
+            const ddlBrand = document.getElementById('ddlBrandExisting');
+            if (!ddlBrand.value) {
+                alert("Vui lòng chọn thiết bị cụ thể ở dòng 2!");
+                return;
+            }
+            selectedDeviceId = parseInt(ddlBrand.value);
+            deviceName = ddlBrand.options[ddlBrand.selectedIndex].text.split(' (')[0];
+        }
+
+        let devices = getModuleDevices();
+        devices.push({ id: selectedDeviceId, name: deviceName, room: description || 'Phòng chính' });
+        saveModuleDevices(devices);
+
+        // Đóng modal
+        let modalEl = document.getElementById('addDeviceModal');
+        let modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+    }
+
+    // Xóa thiết bị khỏi module
+    function deleteModuleDevice(index) {
+        if (!confirm("Bạn có chắc chắn muốn xóa thiết bị này khỏi module không?")) return;
+        let devices = getModuleDevices();
+        devices.splice(index, 1);
+        saveModuleDevices(devices);
+    }
+
+    document.addEventListener("DOMContentLoaded", renderModuleDevices);
+</script>

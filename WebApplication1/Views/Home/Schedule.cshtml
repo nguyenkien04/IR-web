@@ -1,0 +1,397 @@
+﻿@using System.Data
+@model DataTable
+
+@{
+    ViewData["Title"] = "Schedule";
+    int totalCount = Model != null ? Model.Rows.Count : 0;
+}
+
+<!-- Content Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold m-0">Schedule</h3>
+        <p class="text-muted small m-0">Automatically control your devices at a specific time.</p>
+    </div>
+    <button class="btn btn-primary px-4 py-2 rounded-3 fw-semibold shadow-sm" data-bs-toggle="modal" data-bs-target="#addScheduleModal" onclick="initScheduleModal()">
+        <i class="bi bi-plus-lg me-1"></i> + Add Schedule
+    </button>
+</div>
+
+@if (TempData["Message"] != null)
+{
+    <div class="alert alert-success">@TempData["Message"]</div>
+}
+
+<!-- Danh sách Lịch hẹn giờ (Schedule List Container) -->
+<div class="d-flex flex-column gap-3" id="scheduleListContainer">
+    @if (Model != null && Model.Rows.Count > 0)
+    {
+        foreach (System.Data.DataRow row in Model.Rows)
+        {
+            string rawTime = row["ScheduleTime"] != DBNull.Value ? row["ScheduleTime"].ToString() : "00:00";
+            if (rawTime.Length > 5) { rawTime = rawTime.Substring(0, 5); }
+
+            bool isActive = row["IsActive"] != DBNull.Value && Convert.ToBoolean(row["IsActive"]);
+            string description = row["Description"] != DBNull.Value ? row["Description"].ToString() : "Không mô tả";
+            string deviceName = row["DeviceName"] != DBNull.Value ? row["DeviceName"].ToString() : "Thiết bị chung";
+            string buttonName = row["ButtonName"] != DBNull.Value ? row["ButtonName"].ToString() : "Lệnh tùy chỉnh";
+            int scheduleId = row["ScheduleId"] != DBNull.Value ? Convert.ToInt32(row["ScheduleId"]) : 0;
+
+            <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+                <div class="row align-items-center">
+                    <div class="col-md-2">
+                        <h2 class="fw-bold m-0 text-dark">@rawTime</h2>
+                    </div>
+                    <div class="col-md-6">
+                        <h5 class="fw-bold mb-1">@description</h5>
+                        <div class="d-flex align-items-center gap-3 text-muted small">
+                            <span><i class="bi bi-display me-1 text-primary"></i> @deviceName</span>
+                            <span><i class="bi bi-broadcast me-1 text-success"></i> @buttonName</span>
+                            <span><i class="bi bi-arrow-repeat me-1"></i> Every day</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 d-flex justify-content-end align-items-center gap-3">
+                        <!-- Nút gạt bật/tắt (Toggle Switch) -->
+                        <div class="form-check form-switch fs-5 m-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="scheduleSwitch_@scheduleId" @(isActive ? "checked" : "") onchange="toggleScheduleStatus(@scheduleId, this)">
+                        </div>
+                        <!-- Nút Delete gọi hàm AJAX POST -->
+                        <button type="button" class="btn btn-light text-danger px-3 py-2 rounded-3 fw-semibold border-0" onclick="deleteSchedule(@scheduleId)">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white text-center text-muted">
+            <p class="mb-0">Chưa có lịch hẹn tự động nào được tạo.</p>
+        </div>
+    }
+</div>
+
+<!-- Modal Add Schedule -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold">Add New Schedule</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="scheduleForm" onsubmit="submitScheduleForm(event)">
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Thời gian thực thi:</label>
+                        <input type="time" id="scheduleTimeInput" class="form-control py-2" value="07:00" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Tên lịch trình / Mô tả:</label>
+                        <input type="text" id="scheduleDescInput" class="form-control py-2" placeholder="Ví dụ: Bật điều hòa buổi sáng..." required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Chọn loại điều khiển:</label>
+                        <select id="scheduleTypeSelect" class="form-select py-2" onchange="onScheduleTypeChange()" required>
+                            <option value="">-- Chọn hình thức thực thi --</option>
+                            <option value="scene">Chạy Kịch bản (Scene)</option>
+                            <option value="device">Chọn Thiết bị cụ thể</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 d-none" id="sceneSelectContainer">
+                        <label class="form-label fw-semibold text-primary">Chọn Kịch bản (Scene):</label>
+                        <select id="scheduleSceneSelect" class="form-select py-2">
+                            <option value="">-- Chọn kịch bản --</option>
+                        </select>
+                    </div>
+
+                    <!-- BỔ SUNG: Ô chọn Module trước khi chọn thiết bị -->
+                    <div class="mb-3 d-none" id="moduleSelectContainer">
+                        <label class="form-label fw-semibold text-secondary">Chọn Module ESP32:</label>
+                        <select id="scheduleModuleSelect" class="form-select py-2" onchange="onScheduleModuleChange()">
+                            <option value="">-- Chọn Module --</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 d-none" id="deviceSelectContainer">
+                        <label class="form-label fw-semibold text-primary">Chọn thiết bị:</label>
+                        <select id="scheduleDeviceSelect" class="form-select py-2" onchange="onScheduleDeviceChange()" disabled>
+                            <option value="">-- Chọn thiết bị --</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3 d-none" id="buttonSelectContainer">
+                        <label class="form-label fw-semibold text-success">Chọn nút lệnh:</label>
+                        <select id="scheduleButtonSelect" class="form-select py-2">
+                            <option value="">-- Chọn nút bấm --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary rounded-3 px-4 fw-semibold">Save Schedule</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Toast thông báo -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+    <div id="statusToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert">
+        <div class="d-flex">
+            <div class="toast-body fw-semibold" id="toastMessage">Thông báo</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function initScheduleModal() {
+        document.getElementById('scheduleTimeInput').value = "07:00";
+        document.getElementById('scheduleDescInput').value = "";
+        document.getElementById('scheduleTypeSelect').value = "";
+        
+        document.getElementById('sceneSelectContainer').classList.add('d-none');
+        document.getElementById('moduleSelectContainer').classList.add('d-none');
+        document.getElementById('deviceSelectContainer').classList.add('d-none');
+        document.getElementById('buttonSelectContainer').classList.add('d-none');
+    }
+
+    function onScheduleTypeChange() {
+        const type = document.getElementById('scheduleTypeSelect').value;
+        const sceneContainer = document.getElementById('sceneSelectContainer');
+        const moduleContainer = document.getElementById('moduleSelectContainer');
+        const deviceContainer = document.getElementById('deviceSelectContainer');
+        const buttonContainer = document.getElementById('buttonSelectContainer');
+
+        sceneContainer.classList.add('d-none');
+        moduleContainer.classList.add('d-none');
+        deviceContainer.classList.add('d-none');
+        buttonContainer.classList.add('d-none');
+
+        if (type === "scene") {
+            sceneContainer.classList.remove('d-none');
+            loadScenesList();
+        } else if (type === "device") {
+            moduleContainer.classList.remove('d-none');
+            loadModulesList();
+        }
+    }
+
+    function loadScenesList() {
+        let select = document.getElementById('scheduleSceneSelect');
+        select.innerHTML = '<option value="">-- Đang tải kịch bản --</option>';
+
+        fetch('/Home/GetScenes') 
+            .then(res => res.json())
+            .then(data => {
+                select.innerHTML = '<option value="">-- Chọn kịch bản --</option>';
+                if (data && data.length > 0) {
+                    data.forEach(scene => {
+                        let opt = document.createElement('option');
+                        opt.value = scene.sceneId;
+                        opt.text = scene.sceneName + (scene.description ? " (" + scene.description + ")" : "");
+                        select.appendChild(opt);
+                    });
+                } else {
+                    select.innerHTML = '<option value="">-- Chọn kịch bản --</option>' +
+                                       '<option value="1">Xem phim (Mẫu)</option>' +
+                                       '<option value="2">Đi ngủ (Mẫu)</option>';
+                }
+            })
+            .catch(err => {
+                select.innerHTML = '<option value="">-- Chọn kịch bản --</option>' +
+                                   '<option value="1">Xem phim (Mẫu)</option>' +
+                                   '<option value="2">Đi ngủ (Mẫu)</option>';
+            });
+    }
+
+    // Tải danh sách các Module ESP32 từ localStorage
+    function loadModulesList() {
+        let moduleSelect = document.getElementById('scheduleModuleSelect');
+        moduleSelect.innerHTML = '<option value="">-- Chọn Module --</option>';
+
+        let espDevices = JSON.parse(localStorage.getItem('devices')) || [];
+        if (espDevices.length === 0) {
+            espDevices.push({ hwId: "ESP32_VIRTUAL_9999" });
+            localStorage.setItem('devices', JSON.stringify(espDevices));
+        }
+
+        espDevices.forEach(mod => {
+            let opt = document.createElement('option');
+            opt.value = mod.hwId;
+            opt.text = `Module: ${mod.hwId}`;
+            moduleSelect.appendChild(opt);
+        });
+    }
+
+    // Khi chọn Module -> Lọc danh sách thiết bị thuộc module đó
+    function onScheduleModuleChange() {
+        const selectedModule = document.getElementById('scheduleModuleSelect').value;
+        const deviceContainer = document.getElementById('deviceSelectContainer');
+        let deviceSelect = document.getElementById('scheduleDeviceSelect');
+        let buttonContainer = document.getElementById('buttonSelectContainer');
+
+        deviceSelect.innerHTML = '<option value="">-- Chọn thiết bị --</option>';
+        buttonContainer.classList.add('d-none');
+
+        if (!selectedModule) {
+            deviceContainer.classList.add('d-none');
+            return;
+        }
+
+        deviceContainer.classList.remove('d-none');
+        deviceSelect.disabled = false;
+
+        const storageKey = `module_devices_${selectedModule}`;
+        let moduleDevices = JSON.parse(localStorage.getItem(storageKey)) || [];
+
+        if (moduleDevices.length === 0) {
+            deviceSelect.innerHTML = '<option value="">-- Module này chưa có thiết bị nào --</option>';
+            deviceSelect.disabled = true;
+            return;
+        }
+
+        moduleDevices.forEach((dev, index) => {
+            let opt = document.createElement('option');
+            opt.value = index;
+            opt.text = `${dev.name} (${dev.room || 'Phòng chính'})`;
+            deviceSelect.appendChild(opt);
+        });
+    }
+
+    function onScheduleDeviceChange() {
+        const deviceIndex = document.getElementById('scheduleDeviceSelect').value;
+        const buttonContainer = document.getElementById('buttonSelectContainer');
+        let buttonSelect = document.getElementById('scheduleButtonSelect');
+
+        buttonSelect.innerHTML = '<option value="">-- Chọn nút bấm --</option>';
+
+        if (deviceIndex === "") {
+            buttonContainer.classList.add('d-none');
+            return;
+        }
+
+        buttonContainer.classList.remove('d-none');
+
+        // Danh sách nút lệnh mẫu cho thiết bị ảo của module
+        const mockButtons = [
+            { id: 1, name: 'POWER (Nguồn)', hexCode: '0xFF00FF' },
+            { id: 2, name: 'VOL / TEMP + (Tăng)', hexCode: '0xFF8877' },
+            { id: 3, name: 'VOL / TEMP - (Giảm)', hexCode: '0xFF4422' },
+            { id: 4, name: 'MUTE (Tắt tiếng)', hexCode: '0xFF1133' }
+        ];
+
+        mockButtons.forEach(btn => {
+            let opt = document.createElement('option');
+            opt.value = btn.id;
+            opt.text = btn.name + " (" + btn.hexCode + ")";
+            buttonSelect.appendChild(opt);
+        });
+    }
+
+    function submitScheduleForm(event) {
+        event.preventDefault();
+
+        const timeStr = document.getElementById('scheduleTimeInput').value;
+        const description = document.getElementById('scheduleDescInput').value;
+        const type = document.getElementById('scheduleTypeSelect').value;
+
+        let buttonId = 0;
+        if (type === "device") {
+            buttonId = document.getElementById('scheduleButtonSelect').value;
+            if (!buttonId) {
+                showToast("Vui lòng chọn nút lệnh thực thi!", false);
+                return;
+            }
+        } else if (type === "scene") {
+            const sceneId = document.getElementById('scheduleSceneSelect').value;
+            if (!sceneId) {
+                showToast("Vui lòng chọn kịch bản thực thi!", false);
+                return;
+            }
+            buttonId = sceneId; 
+        }
+
+        const payload = {
+            ButtonId: parseInt(buttonId) || 0,
+            TimeStr: timeStr,
+            Description: description
+        };
+
+        fetch('/Home/CreateSchedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, true);
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.message, false);
+            }
+        })
+        .catch(err => {
+            showToast("Lỗi kết nối đến server!", false);
+        });
+    }
+
+    // Hàm xử lý Bật/Tắt lịch trình khi gạt nút xanh
+    function toggleScheduleStatus(id, element) {
+        const isChecked = element.checked;
+        fetch('/Home/ToggleSchedule?id=' + id, {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast(isChecked ? "Đã bật lịch trình!" : "Đã tắt lịch trình!", true);
+            } else {
+                showToast(data.message || "Lỗi cập nhật trạng thái!", false);
+                element.checked = !isChecked;
+            }
+        })
+        .catch(err => {
+            showToast("Lỗi kết nối đến server!", false);
+            element.checked = !isChecked;
+        });
+    }
+
+    // Hàm xử lý Xóa lịch trình
+    function deleteSchedule(id) {
+        if (!confirm("Bạn có chắc muốn xóa lịch hẹn này không?")) return;
+
+        fetch('/Home/DeleteSchedule?id=' + id, {
+            method: 'POST'
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast(data.message, true);
+                setTimeout(() => location.reload(), 800);
+            } else {
+                showToast(data.message || "Lỗi xóa lịch!", false);
+            }
+        })
+        .catch(err => {
+            showToast("Lỗi kết nối đến server!", false);
+        });
+    }
+
+    function showToast(msg, isSuccess) {
+        var toastElem = document.getElementById('statusToast');
+        toastElem.className = isSuccess 
+            ? 'toast align-items-center text-white bg-success border-0 shadow' 
+            : 'toast align-items-center text-white bg-danger border-0 shadow';
+        document.getElementById('toastMessage').innerText = msg;
+        var toast = new bootstrap.Toast(toastElem);
+        toast.show();
+    }
+</script>

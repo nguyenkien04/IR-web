@@ -1,0 +1,242 @@
+﻿@using System.Data
+@model DataTable
+
+@{
+    ViewData["Title"] = "Learning";
+    DataTable devices = ViewBag.Devices as DataTable;
+}
+
+<!-- Content Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold m-0">IR Learning</h3>
+        <p class="text-muted small m-0">Teach your Smart IR Hub commands from an existing remote control.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 bg-white px-3 py-2 rounded-pill shadow-sm border">
+        <span class="badge bg-success rounded-circle p-1"></span>
+        <span class="fw-semibold small text-success" id="receiverStatusText">IR Receiver Ready</span>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Cột trái: Các bước thực hiện học lệnh -->
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+            
+            <!-- Bước 1: Chọn thiết bị -->
+            <div class="mb-4">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary rounded-circle px-2 py-1">1</span>
+                    <h6 class="fw-bold m-0">Select Device</h6>
+                </div>
+                <p class="text-muted small ms-4 mb-3">Choose the device you want to teach.</p>
+                
+                <div class="row g-3 ms-2" id="deviceRadioGroup">
+                    @if (devices != null && devices.Rows.Count > 0)
+                    {
+                        bool isFirst = true;
+                        foreach (DataRow row in devices.Rows)
+                        {
+                            int devId = Convert.ToInt32(row["DeviceId"]);
+                            string devName = row["DeviceName"].ToString();
+                            string devDesc = row["Description"] != null ? row["Description"].ToString() : "Television";
+                            string checkedAttr = isFirst ? "checked" : "";
+                            string borderStyle = isFirst ? "border-primary bg-primary-subtle bg-opacity-10 shadow-sm" : "border-light-subtle bg-white";
+
+                            <div class="col-md-4">
+                                <label class="card @borderStyle border rounded-4 p-3 h-100 cursor-pointer transition-all device-card-label" onclick="selectDeviceCard(this, @devId)">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="radio" name="selectedDeviceRadio" id="dev_@devId" value="@devId" @checkedAttr>
+                                        <label class="form-check-label fw-bold small text-dark" for="dev_@devId">@devName</label>
+                                    </div>
+                                    <small class="text-muted d-block ps-4" style="font-size: 0.75rem;">@devDesc</small>
+                                </label>
+                            </div>
+                            isFirst = false;
+                        }
+                    }
+                    else
+                    {
+                        <div class="col-12">
+                            <p class="text-muted small">Chưa có thiết bị nào. Vui lòng thêm thiết bị ở mục Devices trước.</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <hr class="text-muted opacity-25 my-4" />
+
+            <!-- Bước 2: Chọn lệnh / Tên nút -->
+            <div class="mb-4">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary rounded-circle px-2 py-1">2</span>
+                    <h6 class="fw-bold m-0">Select Command</h6>
+                </div>
+                <p class="text-muted small ms-4 mb-3">Choose or type the button name you want to learn.</p>
+                
+                <div class="ms-4">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold text-secondary">Tên nút lệnh:</label>
+                            <input type="text" id="newButtonName" class="form-control py-2 rounded-3" placeholder="Ví dụ: Power, Volume +, Mute...">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold text-secondary">Gợi ý nhanh:</label>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" onclick="setBtnName('Power')">Power</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" onclick="setBtnName('Volume +')">Vol +</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" onclick="setBtnName('Volume -')">Vol -</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1" onclick="setBtnName('Mute')">Mute</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="text-muted opacity-25 my-4" />
+
+            <!-- Bước 3: Bắt đầu học lệnh (Capture IR Signal) -->
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="badge bg-primary rounded-circle px-2 py-1">3</span>
+                    <h6 class="fw-bold m-0">Capture IR Signal</h6>
+                </div>
+                <p class="text-muted small ms-4 mb-3">Point the original remote at the IR receiver and click start learning.</p>
+                
+                <div class="ms-4 text-center p-4 bg-light rounded-4 border border-light-subtle">
+                    <div class="mb-3">
+                        <i class="bi bi-broadcast text-primary display-4"></i>
+                    </div>
+                    <h5 class="fw-bold mb-1" id="learnInstructionTitle">Sẵn sàng nhận tín hiệu hồng ngoại</h5>
+                    <p class="text-muted small mb-4">Nhấn nút bên dưới để gửi lệnh bật chế độ học tập (Learn Mode) tới ESP32.</p>
+                    
+                    <button type="button" class="btn btn-primary px-5 py-3 rounded-4 fw-semibold shadow-sm" onclick="startLearnModeProcess()">
+                        <i class="bi bi-play-circle-fill me-2"></i> Bắt đầu Học Lệnh
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Cột phải: Hướng dẫn chi tiết -->
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4">
+            <h5 class="fw-bold mb-3">How it works</h5>
+            
+            <div class="d-flex align-items-start gap-3 mb-3">
+                <span class="badge bg-light text-primary border rounded-circle p-2 fw-bold" style="width: 28px; height: 28px;">1</span>
+                <div>
+                    <h6 class="fw-bold small mb-1">Select a device</h6>
+                    <p class="text-muted small m-0">Choose the device that will receive the learned command.</p>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-start gap-3 mb-3">
+                <span class="badge bg-light text-primary border rounded-circle p-2 fw-bold" style="width: 28px; height: 28px;">2</span>
+                <div>
+                    <h6 class="fw-bold small mb-1">Select a command</h6>
+                    <p class="text-muted small m-0">Choose what the IR button should represent.</p>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-start gap-3 mb-3">
+                <span class="badge bg-light text-primary border rounded-circle p-2 fw-bold" style="width: 28px; height: 28px;">3</span>
+                <div>
+                    <h6 class="fw-bold small mb-1">Point your remote</h6>
+                    <p class="text-muted small m-0">Point the original remote toward the IR receiver.</p>
+                </div>
+            </div>
+
+            <div class="d-flex align-items-start gap-3">
+                <span class="badge bg-light text-primary border rounded-circle p-2 fw-bold" style="width: 28px; height: 28px;">4</span>
+                <div>
+                    <h6 class="fw-bold small mb-1">Press the button</h6>
+                    <p class="text-muted small m-0">The Hub captures the infrared signal and stores it.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mẹo lưu ý -->
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-warning bg-opacity-10 border-start border-warning border-4">
+            <div class="d-flex align-items-center gap-2 mb-2 text-warning-emphasis">
+                <i class="bi bi-lightbulb-fill"></i>
+                <h6 class="fw-bold m-0">Tip</h6>
+            </div>
+            <p class="text-secondary small m-0">
+                Keep the original remote within 5–10 cm of the IR receiver while learning a command for best results.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Toast thông báo -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+    <div id="statusToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert">
+        <div class="d-flex">
+            <div class="toast-body fw-semibold" id="toastMessage">Thông báo</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function selectDeviceCard(labelElem, deviceId) {
+        document.querySelectorAll('.device-card-label').forEach(function(el) {
+            el.classList.remove('border-primary', 'bg-primary-subtle', 'bg-opacity-10', 'shadow-sm');
+            el.classList.add('border-light-subtle', 'bg-white');
+        });
+        labelElem.classList.remove('border-light-subtle', 'bg-white');
+        labelElem.classList.add('border-primary', 'bg-primary-subtle', 'bg-opacity-10', 'shadow-sm');
+        
+        var radio = document.getElementById('dev_' + deviceId);
+        if (radio) radio.checked = true;
+    }
+
+    function setBtnName(name) {
+        document.getElementById('newButtonName').value = name;
+    }
+
+    function startLearnModeProcess() {
+        var selectedRadio = document.querySelector('input[name="selectedDeviceRadio"]:checked');
+        if (!selectedRadio) {
+            showToast("Vui lòng chọn thiết bị cần học lệnh!", false);
+            return;
+        }
+
+        var btnName = document.getElementById('newButtonName').value.trim();
+        if (!btnName) {
+            showToast("Vui lòng nhập tên nút lệnh (Ví dụ: Power)!", false);
+            return;
+        }
+
+        var titleElem = document.getElementById('learnInstructionTitle');
+        titleElem.innerText = "Đang chờ thu tín hiệu từ Remote...";
+
+        fetch('/Home/StartLearnMode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            showToast(data.message, data.success);
+            setTimeout(function() {
+                titleElem.innerText = "Sẵn sàng nhận tín hiệu hồng ngoại";
+            }, 3000);
+        })
+        .catch(function(err) {
+            titleElem.innerText = "Sẵn sàng nhận tín hiệu hồng ngoại";
+            showToast("Lỗi kết nối khi gửi lệnh học!", false);
+        });
+    }
+
+    function showToast(msg, isSuccess) {
+        var toastElem = document.getElementById('statusToast');
+        toastElem.className = isSuccess 
+            ? 'toast align-items-center text-white bg-success border-0 shadow' 
+            : 'toast align-items-center text-white bg-danger border-0 shadow';
+        document.getElementById('toastMessage').innerText = msg;
+        var toast = new bootstrap.Toast(toastElem);
+        toast.show();
+    }
+</script>

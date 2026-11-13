@@ -1,0 +1,166 @@
+﻿@{
+    ViewData["Title"] = "Settings";
+}
+
+<!-- Content Header -->
+<div class="mb-4">
+    <h3 class="fw-bold m-0">Settings</h3>
+    <p class="text-muted small m-0">Configure your Smart IR Hub.</p>
+</div>
+
+<!-- Grid 4 ô Cài đặt -->
+<div class="row g-4">
+    
+    <!-- 1. General Settings -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="p-3 bg-light rounded-4 text-dark fs-4 border">
+                    <i class="bi bi-gear"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold m-0">General</h5>
+                    <small class="text-muted">Basic device configuration</small>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label class="form-label fw-semibold small text-secondary">Hub Name</label>
+                <input type="text" class="form-control py-2 rounded-3" value="Smart IR Hub">
+                <small class="text-muted" style="font-size: 0.75rem;">Name displayed in your dashboard</small>
+            </div>
+
+            <div class="mb-2">
+                <label class="form-label fw-semibold small text-secondary">Wi-Fi Network</label>
+                <select class="form-select py-2 rounded-3">
+                    <option selected>Home WiFi</option>
+                    <option>Office WiFi</option>
+                    <option>Guest Network</option>
+                </select>
+                <small class="text-muted" style="font-size: 0.75rem;">Network used by the IR Hub</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Connection Settings -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="p-3 bg-light rounded-4 text-dark fs-4 border">
+                    <i class="bi bi-broadcast"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold m-0">Connection</h5>
+                    <small class="text-muted">IR Hub connection settings</small>
+                </div>
+            </div>
+
+            <div class="p-3 bg-success bg-opacity-10 rounded-4 border border-success border-opacity-25 mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-success rounded-circle p-1"></span>
+                    <span class="fw-bold small text-success">Hub Connected</span>
+                </div>
+                <small class="text-secondary d-block mt-1" style="font-size: 0.75rem;">Smart IR Hub is online (broker.hivemq.com)</small>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-auto">
+                <div>
+                    <h6 class="fw-bold mb-1 small">Auto Reconnect</h6>
+                    <small class="text-muted" style="font-size: 0.75rem;">Automatically reconnect if connection is lost</small>
+                </div>
+                <div class="form-check form-switch fs-5 m-0">
+                    <input class="form-check-input" type="checkbox" role="switch" checked>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Infrared Settings -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="p-3 bg-light rounded-4 text-dark fs-4 border">
+                    <i class="bi bi-badge-vr"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold m-0">Infrared</h5>
+                    <small class="text-muted">IR transmitter and receiver</small>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3 border">
+                        <span class="text-secondary small d-block mb-1">IR Receiver</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 rounded-pill fw-semibold" style="font-size: 0.7rem;">
+                            <i class="bi bi-circle-fill me-1" style="font-size: 0.4rem;"></i> Ready
+                        </span>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="p-3 bg-light rounded-3 border">
+                        <span class="text-secondary small d-block mb-1">IR Transmitter</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 rounded-pill fw-semibold" style="font-size: 0.7rem;">
+                            <i class="bi bi-circle-fill me-1" style="font-size: 0.4rem;"></i> Ready
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h6 class="fw-bold mb-1 small">IR LED Indicator</h6>
+                    <small class="text-muted" style="font-size: 0.75rem;">Show transmission status via hardware LED</small>
+                </div>
+                <div class="form-check form-switch fs-5 m-0">
+                    <input class="form-check-input" type="checkbox" role="switch" checked>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. About Info -->
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="p-3 bg-light rounded-4 text-dark fs-4 border">
+                    <i class="bi bi-info-circle"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold m-0">About</h5>
+                    <small class="text-muted">Smart Universal IR Hub</small>
+                </div>
+            </div>
+
+            <div class="d-flex flex-column gap-2 text-secondary small">
+                <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span>Project</span>
+                    <span class="fw-bold text-dark">Smart Universal IR Hub</span>
+                </div>
+                <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span>Firmware</span>
+                    <span class="fw-bold text-dark">v1.0.0 Demo</span>
+                </div>
+                <div class="d-flex justify-content-between py-1 border-bottom">
+                    <span>Hardware</span>
+                    <span class="fw-bold text-dark">ESP32</span>
+                </div>
+                <div class="d-flex justify-content-between py-1">
+                    <span>Connection</span>
+                    <span class="fw-bold text-dark">Wi-Fi & MQTT</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Toast thông báo -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+    <div id="statusToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert">
+        <div class="d-flex">
+            <div class="toast-body fw-semibold" id="toastMessage">Đã lưu cài đặt thành công!</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>

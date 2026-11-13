@@ -1,0 +1,261 @@
+﻿@{
+    ViewData["Title"] = "ESP32 Provisioning";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold m-0">Demo ESP32: Bluetooth + MQTT</h3>
+        <p class="text-muted small m-0">Bluetooth chỉ dùng một lần để gửi WiFi cho thiết bị. Sau đó mọi thứ chạy qua MQTT.</p>
+    </div>
+</div>
+
+<section id="unsupported" class="warn alert alert-danger d-none p-3 rounded-3 mb-4">
+    <strong>Trình duyệt chưa dùng được Web Bluetooth.</strong>
+    <p class="hint m-0" style="color:inherit">Dùng Chrome hoặc Edge, mở qua <code>http://localhost</code> hoặc <code>http://127.0.0.1</code>.</p>
+</section>
+
+<!-- 1. Thêm thiết bị -->
+<div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+    <h5 class="fw-bold mb-3">1. Thêm thiết bị</h5>
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label for="ssid" class="form-label small fw-semibold text-muted">Tên WiFi (2.4 GHz)</label>
+            <input id="ssid" class="form-control" autocomplete="off" spellcheck="false" placeholder="Nhập tên WiFi">
+        </div>
+        <div class="col-md-6">
+            <label for="pass" class="form-label small fw-semibold text-muted">Mật khẩu WiFi</label>
+            <input id="pass" type="password" class="form-control" autocomplete="off" placeholder="Mật khẩu WiFi">
+        </div>
+        <div class="col-md-6">
+            <label for="host" class="form-label small fw-semibold text-muted">IP máy chạy Mosquitto</label>
+            <input id="host" class="form-control" placeholder="192.168.1.7" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="col-md-3">
+            <label for="mqttPort" class="form-label small fw-semibold text-muted">Cổng MQTT (ESP32)</label>
+            <input id="mqttPort" type="number" class="form-control" value="1883">
+        </div>
+        <div class="col-md-3">
+            <label for="wsPort" class="form-label small fw-semibold text-muted">Cổng WebSocket (Web)</label>
+            <input id="wsPort" type="number" class="form-control" value="9001">
+        </div>
+    </div>
+    <p class="form-text text-muted mt-2">Máy tính, ESP32 và điện thoại phải cùng một mạng WiFi. Xem IP máy bằng lệnh <code>ipconfig</code>.</p>
+    <div class="mt-3">
+        <button id="btnAdd" class="btn btn-primary px-4 py-2 rounded-3 fw-semibold">Tìm và cấu hình thiết bị</button>
+    </div>
+    <div id="step" class="mt-3 fw-semibold"></div>
+</div>
+
+<!-- 2. Thiết bị của tôi -->
+<div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold m-0">2. Thiết bị của tôi</h5>
+        <span id="brokerPill" class="badge bg-secondary">broker: chưa kết nối</span>
+    </div>
+    <ul class="devices list-unstyled m-0" id="devices"></ul>
+    <p class="text-muted m-0" id="empty">Chưa có thiết bị nào.</p>
+</div>
+
+<!-- 3. Nhật ký -->
+<div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+    <h5 class="fw-bold mb-3">Nhật ký</h5>
+    <pre id="log" class="bg-dark text-light p-3 rounded-3" style="max-height: 240px; overflow: auto; font-size: 0.82rem;"></pre>
+    <div class="mt-2">
+        <button class="btn btn-light btn-sm border" id="btnClearLog">Xóa nhật ký</button>
+    </div>
+</div>
+
+<!-- Thư viện MQTT qua CDN -->
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
+<script>
+    const SERVICE     = 'a1b2c3d4-0001-4000-8000-00805f9b34fb';
+    const CHAR_HWID   = 'a1b2c3d4-0002-4000-8000-00805f9b34fb';
+    const CHAR_CONFIG = 'a1b2c3d4-0003-4000-8000-00805f9b34fb';
+    const CHAR_RESULT = 'a1b2c3d4-0004-4000-8000-00805f9b34fb';
+
+    const topicStatus = (id) => `devices/${id}/status`;
+    const topicCmd    = (id) => `devices/${id}/cmd`;
+
+    const $ = (s) => document.querySelector(s);
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    function load(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } }
+    function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+    async function waitFor(cond, ms) {
+        const t = Date.now();
+        while (Date.now() - t < ms) { if (cond()) return true; await sleep(300); }
+        return false;
+    }
+
+    function log(msg, cls) {
+        const line = document.createElement('div');
+        if (cls === 'err') line.style.color = '#ff8a73';
+        if (cls === 'ok') line.style.color = '#5cc2a5';
+        line.textContent = `[${new Date().toLocaleTimeString('vi-VN')}] ${msg}`;
+        $('#log').appendChild(line);
+        $('#log').scrollTop = $('#log').scrollHeight;
+    }
+    function setStep(text, cls) {
+        const stepEl = $('#step');
+        stepEl.textContent = text;
+        stepEl.className = 'mt-3 fw-semibold ' + (cls === 'err' ? 'text-danger' : cls === 'ok' ? 'text-success' : '');
+    }
+
+    let devices = load('devices', []);
+    let broker  = load('broker', { host: '', wsPort: 9001 });
+    const states = {};
+    let client = null;
+
+    function connectBroker(host, wsPort) {
+        if (client) client.end(true);
+        const url = `ws://${host}:${wsPort}`;
+        log('Kết nối broker ' + url + ' ...');
+        client = mqtt.connect(url, { reconnectPeriod: 3000, connectTimeout: 5000 });
+
+        client.on('connect', () => {
+            log('Đã kết nối broker', 'ok');
+            devices.forEach((d) => client.subscribe(topicStatus(d.hwId)));
+            setBrokerPill(true);
+        });
+        client.on('close', () => setBrokerPill(false));
+        client.on('error', (e) => log('Lỗi MQTT: ' + e.message, 'err'));
+        client.on('message', (topic, payload) => {
+            const m = topic.match(/^devices\/([^/]+)\/status$/);
+            if (!m) return;
+            let s;
+            try { s = JSON.parse(payload.toString()); } catch { s = { online: false }; }
+            states[m[1]] = s;
+            render();
+        });
+    }
+
+    function setBrokerPill(on) {
+        const pill = $('#brokerPill');
+        pill.textContent = 'broker: ' + (on ? 'đã kết nối' : 'chưa kết nối');
+        pill.className = 'badge ' + (on ? 'bg-success' : 'bg-secondary');
+    }
+
+    function sendCmd(hwId, value) {
+        if (!client || !client.connected) { log('Chưa kết nối broker', 'err'); return; }
+        client.publish(topicCmd(hwId), value);
+        log(`Gửi ${topicCmd(hwId)} = ${value}`);
+    }
+
+    function render() {
+        const ul = $('#devices');
+        ul.innerHTML = '';
+        $('#empty').classList.toggle('d-none', devices.length > 0);
+
+        for (const d of devices) {
+            const s = states[d.hwId];
+            const online = !!(s && s.online);
+
+            const li = document.createElement('li');
+            li.className = 'd-flex justify-content-between align-items-center py-2 border-bottom flex-wrap gap-2';
+
+            const left = document.createElement('div');
+            const name = document.createElement('div');
+            name.innerHTML = `Thiết bị <strong>${d.hwId.slice(-4)}</strong> <span class="badge ${online ? 'bg-success' : 'bg-secondary'}">${online ? 'online' : 'offline'}</span>`;
+
+            const id = document.createElement('div');
+            id.className = 'text-muted small font-monospace';
+            id.textContent = d.hwId + (online && s.ip ? ' · ' + s.ip : '') + (online ? ' · LED ' + (s.led ? 'bật' : 'tắt') : '');
+            left.append(name, id);
+
+            const right = document.createElement('div');
+            right.className = 'd-flex gap-2';
+
+            const bOn = document.createElement('button');
+            bOn.className = 'btn btn-sm btn-outline-success';
+            bOn.textContent = 'Bật LED'; bOn.disabled = !online; bOn.onclick = () => sendCmd(d.hwId, '1');
+
+            const bOff = document.createElement('button');
+            bOff.className = 'btn btn-sm btn-outline-secondary';
+            bOff.textContent = 'Tắt LED'; bOff.disabled = !online; bOff.onclick = () => sendCmd(d.hwId, '0');
+
+            const bDel = document.createElement('button');
+            bDel.className = 'btn btn-sm btn-outline-danger'; bDel.textContent = 'Xóa';
+            bDel.onclick = () => {
+                devices = devices.filter((x) => x.hwId !== d.hwId);
+                store('devices', devices);
+                if (client) client.unsubscribe(topicStatus(d.hwId));
+                delete states[d.hwId];
+                render();
+            };
+            right.append(bOn, bOff, bDel);
+            li.append(left, right);
+            ul.appendChild(li);
+        }
+    }
+
+    async function addDevice() {
+        const ssid = $('#ssid').value;
+        const pass = $('#pass').value;
+        const host = $('#host').value.trim();
+        const mqttPort = Number($('#mqttPort').value) || 1883;
+        const wsPort = Number($('#wsPort').value) || 9001;
+        if (!ssid || !host) { setStep('Hãy nhập tên WiFi và IP máy chạy Mosquitto.', 'err'); return; }
+
+        $('#btnAdd').disabled = true;
+        try {
+            setStep('Chọn thiết bị trong hộp thoại Bluetooth...');
+            const device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SERVICE] }] });
+            const server = await device.gatt.connect();
+            const svc = await server.getPrimaryService(SERVICE);
+            const hwId = new TextDecoder().decode(await (await svc.getCharacteristic(CHAR_HWID)).readValue());
+            log('hwId = ' + hwId, 'ok');
+
+            const result = await svc.getCharacteristic(CHAR_RESULT);
+            await result.startNotifications();
+            const wifiDone = new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error('Hết thời gian chờ thiết bị')), 45000);
+                result.addEventListener('characteristicvaluechanged', (e) => {
+                    const s = new TextDecoder().decode(e.target.value);
+                    log('ESP32 báo: ' + s);
+                    if (s === 'wifi_connecting') setStep('Thiết bị đang vào WiFi...');
+                    if (s === 'wifi_ok') { clearTimeout(timer); resolve(); }
+                    if (s.startsWith('error:')) {
+                        clearTimeout(timer);
+                        reject(new Error(s === 'error:wifi' ? 'Thiết bị không vào được WiFi (sai mật khẩu hoặc 5 GHz)' : 'Từ chối cấu hình: ' + s));
+                    }
+                });
+            });
+
+            setStep('Gửi WiFi và địa chỉ MQTT xuống thiết bị...');
+            const payload = new TextEncoder().encode(JSON.stringify({ ssid, pass, mqtt_host: host, mqtt_port: mqttPort }));
+            await (await svc.getCharacteristic(CHAR_CONFIG)).writeValueWithResponse(payload);
+
+            await wifiDone;
+            try { device.gatt.disconnect(); } catch {}
+            log('WiFi OK. Bluetooth kết thúc nhiệm vụ.', 'ok');
+
+            setStep('Chờ thiết bị báo online qua MQTT...');
+            if (!devices.some((d) => d.hwId === hwId)) {
+                devices.push({ hwId });
+                store('devices', devices);
+            }
+            broker = { host, wsPort };
+            store('broker', broker);
+            connectBroker(host, wsPort);
+            render();
+
+            const ok = await waitFor(() => states[hwId] && states[hwId].online, 40000);
+            if (ok) setStep('Hoàn tất. Thiết bị đã online.', 'ok');
+            else throw new Error('Chưa thấy thiết bị online. Kiểm tra Mosquitto và WebSocket.');
+        } catch (e) {
+            const msg = e.name === 'NotFoundError' ? 'Bạn đã đóng hộp chọn thiết bị hoặc không tìm thấy.' : e.message;
+            setStep('Lỗi: ' + msg, 'err');
+            log('Lỗi: ' + msg, 'err');
+        } finally {
+            $('#btnAdd').disabled = false;
+        }
+    }
+
+    if (!('bluetooth' in navigator) || !window.isSecureContext) $('#unsupported').classList.remove('d-none');
+    $('#host').value = broker.host;
+    $('#wsPort').value = broker.wsPort;
+    $('#btnAdd').addEventListener('click', addDevice);
+    $('#btnClearLog').addEventListener('click', () => ($('#log').textContent = ''));
+    render();
+    if (broker.host && devices.length) connectBroker(broker.host, broker.wsPort);
+    log('Sẵn sàng.');
+</script>

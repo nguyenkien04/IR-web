@@ -1,0 +1,52 @@
+﻿@model System.Data.DataTable
+
+@{
+    ViewData["Title"] = "Quản lý Ngữ cảnh (Scenes)";
+}
+
+<div class="container mt-4">
+    <h2>Quản lý Ngữ cảnh (Scenes)</h2>
+    <a href="/Scene/Create" class="btn btn-primary mb-3">+ Tạo Ngữ cảnh mới</a>
+
+    @if (TempData["Message"] != null)
+    {
+        <div class="alert alert-success">@TempData["Message"]</div>
+    }
+
+    <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th>ID</th>
+                <th>Tên Ngữ cảnh</th>
+                <th>Mô tả</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model != null && Model.Rows.Count > 0)
+            {
+                foreach (System.Data.DataRow row in Model.Rows)
+                {
+                    <tr>
+                        <td>@row["SceneId"]</td>
+                        <td><strong>@row["SceneName"]</strong></td>
+                        <td>@row["Description"]</td>
+                        <td>
+                            <form asp-action="Execute" method="post" style="display:inline;">
+                                <input type="hidden" name="id" value="@row["SceneId"]" />
+                                <button type="submit" class="btn btn-success btn-sm">▶ Kích hoạt</button>
+                            </form>
+                            <a href="/Scene/Delete/@row["SceneId"]" class="btn btn-danger btn-sm" onclick="return confirm('Bạn có chắc muốn xóa ngữ cảnh này?');">Xóa</a>
+                        </td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="4" class="text-center">Chưa có ngữ cảnh nào được tạo.</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

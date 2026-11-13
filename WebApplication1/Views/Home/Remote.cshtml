@@ -1,0 +1,312 @@
+﻿@{
+    ViewData["Title"] = "Remote Control";
+    string hwId = Context.Request.Query["hwId"].ToString();
+    if (string.IsNullOrEmpty(hwId)) { hwId = "DEFAULT_MODULE"; }
+
+    string deviceIdParam = Context.Request.Query["deviceId"].ToString();
+    int initialDeviceId = 0;
+    int.TryParse(deviceIdParam, out initialDeviceId);
+}
+
+<!-- Content Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold m-0" id="remoteTitle">Remote Control</h3>
+        <p class="text-muted small m-0">Control your devices for module: <strong>@hwId</strong></p>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+        <button class="btn btn-outline-secondary btn-sm px-3 rounded-pill fw-semibold" onclick="location.href='/Home/Devices?hwId=@hwId'">
+            <i class="bi bi-arrow-left me-1"></i> Quay lại Devices
+        </button>
+        <div class="d-flex align-items-center gap-2 bg-white px-3 py-2 rounded-pill shadow-sm border">
+            <span id="brokerStatusIndicator" class="badge bg-secondary rounded-circle p-1"></span>
+            <span id="brokerStatusText" class="fw-semibold small text-muted">Connecting Broker...</span>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs chọn loại thiết bị -->
+<div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+    <label class="form-label fw-bold text-secondary small text-uppercase mb-3">Thiết bị thuộc Module (@hwId):</label>
+    <div class="d-flex flex-wrap gap-2" id="moduleDeviceTabs">
+        <span class="text-muted small">Đang tải danh sách thiết bị...</span>
+    </div>
+</div>
+
+<!-- Khu vực hiển thị thông tin và Remote Phone Simulator -->
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+            <div class="d-flex align-items-center mb-3">
+                <div class="p-3 bg-primary-subtle text-primary rounded-4 fs-3 me-3">
+                    <i class="bi bi-tv"></i>
+                </div>
+                <div>
+                    <h4 class="fw-bold mb-1" id="selectedDeviceName">Virtual IR Remote</h4>
+                    <p class="text-muted small m-0">Control Interface via MQTT for @hwId</p>
+                </div>
+            </div>
+            <hr class="text-muted opacity-25 my-4" />
+            <div class="mb-3">
+                <span class="text-secondary small d-block mb-1">Trạng thái kết nối phần cứng:</span>
+                <span id="hardwareStatusBadge" class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill fw-semibold">
+                    <i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i> Disconnected
+                </span>
+            </div>
+            <div class="p-3 bg-light rounded-4 border border-light-subtle mt-auto">
+                <p class="text-secondary small m-0">
+                    <i class="bi bi-info-circle me-1 text-primary"></i>
+                    Các lệnh bấm trên Remote ảo sẽ được gửi gói tin qua MQTT tới mạch phần cứng ESP32 tương ứng để thực thi.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cột phải: Mô phỏng điện thoại chứa Remote -->
+    <div class="col-lg-5 d-flex justify-content-center">
+        <div class="smartphone-case shadow-lg rounded-5 bg-dark text-white p-3 position-relative" style="width: 320px; border: 10px solid #1e293b;">
+            <div class="position-absolute top-0 start-50 translate-middle-x bg-black rounded-pill mt-2" style="width: 70px; height: 16px;"></div>
+
+            <div class="mt-4 pt-2">
+                <div class="d-flex justify-content-between align-items-center px-2 mb-3">
+                    <span class="fw-bold small text-secondary">Remote (@hwId)</span>
+                    <span class="badge bg-danger rounded-pill px-2 py-1" style="font-size: 0.65rem;" id="irLedIndicator">
+                        <i class="bi bi-broadcast"></i> READY
+                    </span>
+                </div>
+
+                <div class="bg-secondary bg-opacity-25 rounded-4 p-3 text-center mb-3 border border-secondary border-opacity-50">
+                    <h6 class="fw-bold text-white m-0" id="phoneRemoteTitle">IR Controller</h6>
+                    <small class="text-secondary" style="font-size: 0.75rem;">Click button to send signal</small>
+                </div>
+
+                <div id="remoteButtonsContainer" class="row g-2 overflow-auto px-1" style="max-height: 420px;">
+                    <div class="col-12 text-center py-5 text-secondary small">
+                        Vui lòng chọn thiết bị để hiển thị remote tương ứng.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast thông báo -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+    <div id="statusToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert">
+        <div class="d-flex">
+            <div class="toast-body fw-semibold" id="toastMessage">Thông báo</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+<!-- Thư viện MQTT qua CDN -->
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5/dist/mqtt.min.js"></script>
+
+@section Scripts {
+    <script>
+        const currentHwId = "@hwId";
+        const targetDeviceId = @initialDeviceId;
+        const storageKey = `module_devices_${currentHwId}`;
+        let mqttClient = null;
+
+        document.addEventListener("DOMContentLoaded", function() {
+            loadDevicesFromLocalStorage();
+            initRemoteMqtt();
+        });
+
+        // 1. Kết nối MQTT Broker
+        function initRemoteMqtt() {
+            let brokerConfig = JSON.parse(localStorage.getItem('broker')) || { host: "broker.hivemq.com", wsPort: 8884 };
+            const brokerUrl = `wss://${brokerConfig.host}:${brokerConfig.wsPort}/mqtt`;
+
+            mqttClient = mqtt.connect(brokerUrl, {
+                clientId: 'web_remote_' + Math.random().toString(16).substring(2, 8),
+                reconnectPeriod: 3000,
+                connectTimeout: 5000
+            });
+
+            mqttClient.on('connect', () => updateBrokerUI(true));
+            mqttClient.on('error', () => updateBrokerUI(false));
+            mqttClient.on('close', () => updateBrokerUI(false));
+        }
+
+        function updateBrokerUI(isConnected) {
+            const statusIndicator = document.getElementById('brokerStatusIndicator');
+            const statusText = document.getElementById('brokerStatusText');
+            const hwBadge = document.getElementById('hardwareStatusBadge');
+
+            if (isConnected) {
+                statusIndicator.className = 'badge bg-success rounded-circle p-1';
+                statusText.className = 'fw-semibold small text-success';
+                statusText.textContent = 'IR Hub Connected';
+                hwBadge.className = 'badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-semibold';
+                hwBadge.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i> Connected to MQTT Broker';
+            } else {
+                statusIndicator.className = 'badge bg-danger rounded-circle p-1';
+                statusText.className = 'fw-semibold small text-danger';
+                statusText.textContent = 'Disconnected';
+                hwBadge.className = 'badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill fw-semibold';
+                hwBadge.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size: 0.5rem;"></i> Disconnected from Broker';
+            }
+        }
+
+        // 2. Lấy danh sách thiết bị từ LocalStorage của module hiện tại
+        function loadDevicesFromLocalStorage() {
+            let tabsContainer = document.getElementById('moduleDeviceTabs');
+            let devices = JSON.parse(localStorage.getItem(storageKey)) || [];
+            tabsContainer.innerHTML = '';
+
+            if (devices.length === 0) {
+                tabsContainer.innerHTML = '<p class="text-muted small m-0">Module này chưa có thiết bị nào. Hãy vào mục Devices để thêm mới!</p>';
+                document.getElementById('remoteButtonsContainer').innerHTML = '<div class="col-12 text-center py-4 text-secondary small">Chưa có thiết bị.</div>';
+                return;
+            }
+
+            // Xác định thiết bị mặc định (khớp với targetDeviceId trên URL hoặc lấy thiết bị đầu tiên)
+            let activeDev = devices[0];
+            if (targetDeviceId > 0) {
+                let found = devices.find(d => (d.id || d.deviceId || d.Id) == targetDeviceId);
+                if (found) activeDev = found;
+            }
+
+            devices.forEach(dev => {
+                let devId = dev.id || dev.deviceId || dev.Id || 0;
+                let devName = dev.name || dev.deviceName || "Thiết bị";
+
+                let a = document.createElement('a');
+                let isActive = (devId == (activeDev.id || activeDev.deviceId || activeDev.Id));
+
+                a.className = `btn ${isActive ? 'btn-primary shadow' : 'btn-light text-dark border'} rounded-pill px-4 py-2 fw-semibold`;
+                a.innerHTML = `<i class="bi bi-display me-2"></i>${devName}`;
+
+                a.onclick = function(e) {
+                    e.preventDefault();
+                    document.querySelectorAll('#moduleDeviceTabs a').forEach(el => {
+                        el.className = 'btn btn-light text-dark border rounded-pill px-4 py-2 fw-semibold';
+                    });
+                    a.className = 'btn btn-primary shadow rounded-pill px-4 py-2 fw-semibold';
+                    loadButtonsForDevice(devId, devName);
+                };
+                tabsContainer.appendChild(a);
+
+                if (isActive) {
+                    loadButtonsForDevice(devId, devName);
+                }
+            });
+        }
+
+        // 3. Tải các nút bấm từ CSDL SQL tương ứng với thiết bị được chọn
+        function loadButtonsForDevice(deviceId, deviceName) {
+            document.getElementById('selectedDeviceName').textContent = deviceName;
+            document.getElementById('phoneRemoteTitle').textContent = deviceName;
+
+            let container = document.getElementById('remoteButtonsContainer');
+            container.innerHTML = '<div class="spinner-border text-info my-4 mx-auto" role="status"></div>';
+
+            fetch('/Home/GetButtons?deviceId=' + deviceId)
+                .then(res => res.json())
+                .then(buttons => {
+                    container.innerHTML = '';
+                    if (!buttons || buttons.length === 0) {
+                        container.innerHTML = '<p class="text-warning my-4 text-center small">Thiết bị này chưa có nút bấm nào trong CSDL.</p>';
+                        return;
+                    }
+
+                    buttons.forEach(btn => {
+                        let col = document.createElement('div');
+                        col.className = 'col-6';
+
+                        let btnName = btn.buttonName || btn.ButtonName || "Nút";
+                        let protocol = btn.protocol || btn.Protocol || "NEC";
+                        let hexCode = btn.hexCode || btn.HexCode || "0xFF00FF";
+                        let bits = btn.bits || btn.Bits || 32;
+
+                        let btnColor = btnName.toLowerCase().includes('nguồn') || btnName.toLowerCase().includes('power') || btnName.toLowerCase().includes('pwr')
+                            ? 'btn-danger fw-bold shadow'
+                            : 'btn-dark text-light border border-secondary border-opacity-50';
+
+                        col.innerHTML = `
+                            <button class="btn ${btnColor} w-100 py-3 rounded-4 shadow-sm small fw-semibold"
+                                    onclick="sendMqttCommandFromSql('${deviceName}', '${btnName}', '${protocol}', '${hexCode}', ${bits})">
+                                <i class="bi bi-power me-1"></i> ${btnName}
+                            </button>
+                        `;
+                        container.appendChild(col);
+                    });
+                })
+                .catch(err => {
+                    console.error("Lỗi tải nút bấm:", err);
+                    container.innerHTML = '<p class="text-danger my-4 text-center small">Lỗi tải nút bấm từ CSDL.</p>';
+                });
+        }
+
+        // Hàm chuyển đổi mã Hex sang mảng xung RAW
+        function convertHexToRaw(hexCode, bits) {
+            let cleanHex = hexCode.replace("0x", "").replace("0X", "");
+            let numericValue = parseInt(cleanHex, 16);
+            if (isNaN(numericValue)) return [];
+
+            let pulses = [];
+            pulses.push(9000); // Header ON
+            pulses.push(4500); // Header OFF
+
+            let totalBits = bits > 0 ? bits : 32;
+            for (let i = totalBits - 1; i >= 0; i--) {
+                pulses.push(560);
+                let bit = (numericValue >> i) & 1;
+                if (bit === 1) {
+                    pulses.push(1690);
+                } else {
+                    pulses.push(560);
+                }
+            }
+            pulses.push(560);
+            return pulses;
+        }
+
+        // 4. Phát lệnh MQTT với định dạng Topic chứa mã phần cứng (ví dụ: smartir/esp32-01/5CE5D934E3EC/cmd)
+        function sendMqttCommandFromSql(deviceName, buttonName, protocol, hexCode, bits) {
+            var led = document.getElementById('irLedIndicator');
+            led.className = 'badge bg-warning text-dark rounded-pill px-2 py-1';
+            led.innerHTML = '<i class="bi bi-broadcast"></i> SENDING...';
+
+            let rawData = convertHexToRaw(hexCode, bits);
+
+            const payload = {
+                hwId: currentHwId,
+                deviceName: deviceName,
+                button: buttonName,
+                protocol: protocol,
+                hexCode: hexCode,
+                bits: bits,
+                raw: rawData,
+                rawLength: rawData.length,
+                timestamp: new Date().toISOString()
+            };
+
+            // GHÉP ĐỘNG MÃ PHẦN CỨNG VÀO TOPIC MQTT
+            const topic = `smartir/esp32-01/${currentHwId}/cmd`;
+
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.publish(topic, JSON.stringify(payload), { qos: 0 });
+            }
+
+            setTimeout(function() {
+                led.className = 'badge bg-danger rounded-pill px-2 py-1';
+                led.innerHTML = '<i class="bi bi-broadcast"></i> READY';
+                showToast(`Đã gửi lệnh tới topic [${topic}] thành công!`, true);
+            }, 400);
+        }
+
+        function showToast(msg, isSuccess) {
+            var toastElem = document.getElementById('statusToast');
+            toastElem.className = isSuccess
+                ? 'toast align-items-center text-white bg-success border-0 shadow'
+                : 'toast align-items-center text-white bg-danger border-0 shadow';
+            document.getElementById('toastMessage').innerText = msg;
+            var toast = new bootstrap.Toast(toastElem);
+            toast.show();
+        }
+    </script>
+}

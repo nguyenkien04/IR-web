@@ -1,0 +1,458 @@
+﻿@{
+    ViewData["Title"] = "Scenes";
+}
+
+<!-- Content Header -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="fw-bold m-0">Scenes</h3>
+        <p class="text-muted small m-0">Combine multiple IR commands into one automation.</p>
+    </div>
+    <button class="btn btn-primary px-4 py-2 rounded-3 fw-semibold shadow-sm" data-bs-toggle="modal" data-bs-target="#createSceneModal" onclick="initCreateSceneModal()">
+        <i class="bi bi-plus-lg me-1"></i> + Create Scene
+    </button>
+</div>
+
+<!-- Grid các Thẻ Kịch Bản (Scenes List) -->
+<div class="row g-4" id="scenesGridContainer">
+    <!-- Dữ liệu sẽ được tự động tải động từ CSDL vào đây -->
+</div>
+
+<!-- Modal Create Scene -->
+<div class="modal fade" id="createSceneModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content rounded-4 border-0 shadow">
+            <div class="modal-header bg-primary text-white rounded-top-4">
+                <h5 class="modal-title fw-bold">Create New Scene</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <!-- 2 Dòng đầu: Tên và Mô tả -->
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Tên kịch bản:</label>
+                        <input type="text" id="sceneName" class="form-control py-2" placeholder="Ví dụ: Tiếp khách, Thư giãn...">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Mô tả:</label>
+                        <input type="text" id="sceneDesc" class="form-control py-2" placeholder="Mô tả ngắn gọn kịch bản">
+                    </div>
+                </div>
+
+                <hr class="text-muted opacity-25 mb-4">
+
+                <!-- Khối thêm bước hành động tuần tự -->
+                <h6 class="fw-bold text-dark mb-3"><i class="bi bi-list-ol text-primary me-2"></i>Danh sách lệnh tuần tự trong kịch bản</h6>
+
+                <div class="p-3 bg-light rounded-4 border mb-3">
+                    <div class="row g-2 align-items-end">
+                        <!-- Chọn Module ESP32 -->
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold text-muted">Chọn Module:</label>
+                            <select id="sceneModuleSelect" class="form-select form-select-sm py-2" onchange="onSceneModuleChange()">
+                                <option value="">-- Chọn Module --</option>
+                            </select>
+                        </div>
+                        <!-- Chọn thiết bị (Lọc theo Module đã chọn) -->
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold text-muted">Chọn thiết bị:</label>
+                            <select id="sceneDeviceSelect" class="form-select form-select-sm py-2" onchange="onSceneDeviceChange()" disabled>
+                                <option value="">-- Chọn thiết bị --</option>
+                            </select>
+                        </div>
+                        <!-- Chọn nút bấm -->
+                        <div class="col-md-3">
+                            <label class="form-label small fw-semibold text-muted">Chọn nút lệnh:</label>
+                            <select id="sceneButtonSelect" class="form-select form-select-sm py-2" disabled>
+                                <option value="">-- Chọn nút bấm --</option>
+                            </select>
+                        </div>
+                        <!-- Thời gian trễ / Hẹn giờ (Delay) -->
+                        <div class="col-md-2">
+                            <label class="form-label small fw-semibold text-muted">Đợi (s):</label>
+                            <input type="number" id="sceneDelayInput" class="form-control form-select-sm py-2" value="1" min="0" max="60">
+                        </div>
+                        <!-- Nút Add Step -->
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-success btn-sm w-100 py-2 fw-bold" onclick="addSceneStep()" title="Thêm bước này">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bảng hiển thị các bước đã thêm -->
+                <div class="table-responsive border rounded-3 p-2 bg-white mb-2" style="max-height: 200px; overflow-y: auto;">
+                    <table class="table table-sm align-middle m-0" id="stepsTable">
+                        <thead>
+                            <tr class="text-muted small">
+                                <th style="width: 10%;">#</th>
+                                <th style="width: 25%;">Module</th>
+                                <th style="width: 30%;">Thiết bị</th>
+                                <th style="width: 25%;">Nút lệnh</th>
+                                <th style="width: 10%;">Đợi (s)</th>
+                                <th style="width: 5%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="stepsTableBody">
+                            <tr id="noStepsRow">
+                                <td colspan="6" class="text-center text-muted small py-3">Chưa có bước nào được thêm. Hãy chọn Module, thiết bị, nút bấm và bấm dấu [+] ở trên.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+            <div class="modal-footer border-0 bg-light rounded-bottom-4">
+                <button type="button" class="btn btn-light rounded-3 px-4" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary rounded-3 px-4 fw-semibold" onclick="saveNewScene()">Create Scene</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast thông báo -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050">
+    <div id="statusToast" class="toast align-items-center text-white bg-success border-0 shadow" role="alert">
+        <div class="d-flex">
+            <div class="toast-body fw-semibold" id="toastMessage">Thông báo</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentSceneSteps = [];
+    let currentModuleDevices = []; // Lưu danh sách thiết bị của module đang chọn
+
+    document.addEventListener("DOMContentLoaded", function () {
+        loadScenes();
+    });
+
+    function loadScenes() {
+        let container = document.getElementById('scenesGridContainer');
+        container.innerHTML = `<div class="col-12 text-center text-muted py-4">Đang tải danh sách kịch bản...</div>`;
+
+        fetch('/Home/GetScenes')
+            .then(res => res.json())
+            .then(data => {
+                container.innerHTML = "";
+                if (!data || data.length === 0) {
+                    container.innerHTML = `<div class="col-12 text-center text-muted py-4">Chưa có kịch bản nào. Hãy bấm "+ Create Scene" để tạo mới.</div>`;
+                    return;
+                }
+
+                data.forEach(scene => {
+                    let cardCol = document.createElement('div');
+                    cardCol.className = "col-md-6";
+                    cardCol.innerHTML = `
+                        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100">
+                            <div class="d-flex align-items-center gap-3 mb-3">
+                                <div class="p-3 bg-success bg-opacity-10 text-success rounded-4 fs-4">
+                                    <i class="bi bi-play-circle-fill"></i>
+                                </div>
+                                <div>
+                                    <h5 class="fw-bold m-0">${scene.sceneName}</h5>
+                                    <small class="text-muted">${scene.description || "Không có mô tả"}</small>
+                                </div>
+                            </div>
+                            <div class="d-flex flex-column gap-2 mb-4">
+                                <div class="d-flex align-items-center gap-3 bg-light rounded-3 px-3 py-2">
+                                    <span class="small fw-semibold text-secondary"><i class="bi bi-info-circle me-1 text-primary"></i> Kịch bản tự động hóa hệ thống</span>
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mt-auto">
+                                <button class="btn btn-primary w-100 py-2.5 rounded-3 fw-semibold shadow-sm" onclick="runMacro('${scene.sceneName}')">
+                                    <i class="bi bi-play-fill me-1"></i> Run Scene
+                                </button>
+                                <button class="btn btn-light text-danger px-3 py-2.5 rounded-3 fw-semibold border-0" onclick="deleteSceneCard(this, ${scene.sceneId})">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(cardCol);
+                });
+            })
+            .catch(err => {
+                console.error("Lỗi tải kịch bản:", err);
+                container.innerHTML = `<div class="col-12 text-center text-danger py-4">Lỗi khi tải dữ liệu kịch bản từ server.</div>`;
+            });
+    }
+
+    function initCreateSceneModal() {
+        document.getElementById('sceneName').value = "";
+        document.getElementById('sceneDesc').value = "";
+        currentSceneSteps = [];
+        renderStepsTable();
+
+        let moduleSelect = document.getElementById('sceneModuleSelect');
+        let deviceSelect = document.getElementById('sceneDeviceSelect');
+        let buttonSelect = document.getElementById('sceneButtonSelect');
+
+        moduleSelect.innerHTML = '<option value="">-- Chọn Module --</option>';
+        deviceSelect.innerHTML = '<option value="">-- Chọn thiết bị --</option>';
+        deviceSelect.disabled = true;
+        buttonSelect.innerHTML = '<option value="">-- Chọn nút bấm --</option>';
+        buttonSelect.disabled = true;
+
+        // Lấy danh sách module ESP32 từ localStorage dựa trên key đã lưu ở trang Devices
+        // Quét các key trong localStorage có tiền tố "module_devices_"
+        let moduleKeys = Object.keys(localStorage).filter(k => k.startsWith('module_devices_'));
+        
+        if (moduleKeys.length === 0) {
+            // Nếu chưa có module nào, thêm mặc định module hiện tại
+            let opt = document.createElement('option');
+            opt.value = "ESP32_VIRTUAL_9999";
+            opt.text = "Module: ESP32_VIRTUAL_9999";
+            moduleSelect.appendChild(opt);
+        } else {
+            moduleKeys.forEach(key => {
+                let hwId = key.replace('module_devices_', '');
+                let opt = document.createElement('option');
+                opt.value = hwId;
+                opt.text = `Module: ${hwId}`;
+                moduleSelect.appendChild(opt);
+            });
+        }
+    }
+
+    function onSceneModuleChange() {
+        const selectedModule = document.getElementById('sceneModuleSelect').value;
+        let deviceSelect = document.getElementById('sceneDeviceSelect');
+        let buttonSelect = document.getElementById('sceneButtonSelect');
+
+        deviceSelect.innerHTML = '<option value="">-- Chọn thiết bị --</option>';
+        buttonSelect.innerHTML = '<option value="">-- Chọn nút bấm --</option>';
+        buttonSelect.disabled = true;
+        currentModuleDevices = [];
+
+        if (!selectedModule) {
+            deviceSelect.disabled = true;
+            return;
+        }
+
+        const storageKey = `module_devices_${selectedModule}`;
+        currentModuleDevices = JSON.parse(localStorage.getItem(storageKey)) || [];
+
+        if (currentModuleDevices.length === 0) {
+            deviceSelect.innerHTML = '<option value="">-- Module này chưa có thiết bị nào --</option>';
+            deviceSelect.disabled = true;
+            return;
+        }
+
+        deviceSelect.disabled = false;
+        currentModuleDevices.forEach((dev, index) => {
+            let devId = dev.id || dev.deviceId || dev.Id || index;
+            let opt = document.createElement('option');
+            opt.value = devId; // Lưu đúng DeviceId
+            opt.text = `${dev.name || dev.deviceName} (${dev.room || 'Phòng chính'})`;
+            deviceSelect.appendChild(opt);
+        });
+    }
+
+    // Khi chọn thiết bị -> Gọi API CSDL SQL lấy đúng danh sách nút bấm của thiết bị đó
+    function onSceneDeviceChange() {
+        const deviceId = document.getElementById('sceneDeviceSelect').value;
+        let buttonSelect = document.getElementById('sceneButtonSelect');
+
+        buttonSelect.innerHTML = '<option value="">-- Đang tải nút bấm từ CSDL... --</option>';
+        buttonSelect.disabled = true;
+
+        if (!deviceId) {
+            buttonSelect.innerHTML = '<option value="">-- Chọn nút bấm --</option>';
+            return;
+        }
+
+        fetch('/Home/GetButtons?deviceId=' + deviceId)
+            .then(res => res.json())
+            .then(buttons => {
+                buttonSelect.innerHTML = '<option value="">-- Chọn nút bấm --</option>';
+                if (!buttons || buttons.length === 0) {
+                    buttonSelect.innerHTML = '<option value="">-- Thiết bị chưa có nút bấm trong CSDL --</option>';
+                    buttonSelect.disabled = true;
+                    return;
+                }
+
+                buttonSelect.disabled = false;
+                buttons.forEach(btn => {
+                    let btnName = btn.buttonName || btn.ButtonName || "Nút";
+                    let protocol = btn.protocol || btn.Protocol || "NEC";
+                    let hexCode = btn.hexCode || btn.HexCode || "0xFF00FF";
+                    let bits = btn.bits || btn.Bits || 32;
+
+                    let opt = document.createElement('option');
+                    // Lưu chuỗi JSON chứa đầy đủ thông tin để lúc chạy kịch bản phần cứng nhận được luôn
+                    opt.value = JSON.stringify({
+                        buttonName: btnName,
+                        protocol: protocol,
+                        hexCode: hexCode,
+                        bits: bits
+                    });
+                    opt.text = btnName + ` (${protocol} - ${hexCode})`;
+                    buttonSelect.appendChild(opt);
+                });
+            })
+            .catch(err => {
+                console.error("Lỗi tải nút bấm:", err);
+                buttonSelect.innerHTML = '<option value="">-- Lỗi tải nút bấm từ CSDL --</option>';
+            });
+    }
+
+    function addSceneStep() {
+        const moduleSelect = document.getElementById('sceneModuleSelect');
+        const deviceSelect = document.getElementById('sceneDeviceSelect');
+        const buttonSelect = document.getElementById('sceneButtonSelect');
+        const delayInput = document.getElementById('sceneDelayInput');
+
+        const hwId = moduleSelect.value;
+        const deviceId = deviceSelect.value;
+        const deviceName = deviceSelect.options[deviceSelect.selectedIndex]?.text || "";
+        const buttonValStr = buttonSelect.value;
+        const delayVal = delayInput.value || 1;
+
+        if (!hwId || !deviceId || !buttonValStr) {
+            showToast("Vui lòng chọn đầy đủ Module, thiết bị và nút lệnh!", false);
+            return;
+        }
+
+        let btnInfo = JSON.parse(buttonValStr);
+
+        currentSceneSteps.push({
+            hwId: hwId,
+            deviceId: deviceId,
+            deviceName: deviceName.split('(')[0].trim(),
+            buttonName: btnInfo.buttonName,
+            protocol: btnInfo.protocol,
+            hexCode: btnInfo.hexCode,
+            bits: btnInfo.bits,
+            delay: parseInt(delayVal)
+        });
+
+        // Reset lại ô chọn nút để chọn bước tiếp theo
+        buttonSelect.innerHTML = '<option value="">-- Chọn nút bấm --</option>';
+        buttonSelect.disabled = true;
+        deviceSelect.value = "";
+        delayInput.value = "1";
+
+        renderStepsTable();
+    }
+
+    function renderStepsTable() {
+        let tbody = document.getElementById('stepsTableBody');
+        if (currentSceneSteps.length === 0) {
+            tbody.innerHTML = `<tr id="noStepsRow"><td colspan="6" class="text-center text-muted small py-3">Chưa có bước nào được thêm. Hãy chọn Module, thiết bị, nút bấm và bấm dấu [+] ở trên.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = "";
+        currentSceneSteps.forEach((step, index) => {
+            let tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="fw-bold text-muted">${index + 1}</td>
+                <td class="small font-monospace text-secondary">${step.hwId}</td>
+                <td class="small fw-semibold">${step.deviceName}</td>
+                <td class="small text-primary">${step.buttonName} <span class="text-muted" style="font-size:0.75rem">(${step.protocol})</span></td>
+                <td class="small text-secondary">${step.delay}s</td>
+                <td><button type="button" class="btn btn-link text-danger p-0 border-0" onclick="removeStep(${index})"><i class="bi bi-trash"></i></button></td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function removeStep(index) {
+        currentSceneSteps.splice(index, 1);
+        renderStepsTable();
+    }
+
+    function saveNewScene() {
+        const name = document.getElementById('sceneName').value.trim();
+        const desc = document.getElementById('sceneDesc').value.trim();
+
+        if (!name) {
+            showToast("Vui lòng nhập tên kịch bản!", false);
+            return;
+        }
+        if (currentSceneSteps.length === 0) {
+            showToast("Kịch bản phải có ít nhất 1 bước hành động! Hãy bấm nút [+] để thêm bước.", false);
+            return;
+        }
+
+        var modalEl = document.getElementById('createSceneModal');
+        var modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+
+        let sceneData = {
+            SceneName: name,
+            Description: desc,
+            Steps: currentSceneSteps
+        };
+
+        fetch('/Home/CreateScene', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(sceneData)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                showToast("Đã tạo kịch bản '" + name + "' thành công!", true);
+                loadScenes();
+            } else {
+                showToast(data.message || "Lỗi lưu kịch bản xuống CSDL!", false);
+            }
+        })
+        .catch(err => {
+            console.error("Lỗi:", err);
+            showToast("Lỗi kết nối khi lưu kịch bản!", false);
+        });
+    }
+
+    function runMacro(sceneName) {
+        showToast("Đang kích hoạt kịch bản '" + sceneName + "'...", true);
+        fetch('/Home/RunSleepMacro', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                showToast("Đã kích hoạt kịch bản thành công!", data.success);
+            })
+            .catch(err => {
+                showToast("Đã gửi lệnh kích hoạt kịch bản qua MQTT!", true);
+            });
+    }
+
+    function deleteSceneCard(btn, sceneId) {
+        if (!confirm("Bạn có chắc chắn muốn xóa kịch bản này không?")) return;
+
+        if (sceneId > 0) {
+            fetch('/Home/DeleteScene?id=' + sceneId, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    let cardCol = btn.closest('.col-md-6');
+                    if (cardCol) cardCol.remove();
+                    showToast(data.message, true);
+                    loadScenes();
+                } else {
+                    showToast(data.message || "Lỗi xóa kịch bản từ CSDL!", false);
+                }
+            })
+            .catch(err => {
+                showToast("Lỗi kết nối đến server!", false);
+            });
+        } else {
+            let cardCol = btn.closest('.col-md-6');
+            if (cardCol) cardCol.remove();
+            showToast("Đã xóa kịch bản thành công!", true);
+        }
+    }
+
+    function showToast(msg, isSuccess) {
+        var toastElem = document.getElementById('statusToast');
+        toastElem.className = isSuccess
+            ? 'toast align-items-center text-white bg-success border-0 shadow'
+            : 'toast align-items-center text-white bg-danger border-0 shadow';
+        document.getElementById('toastMessage').innerText = msg;
+        var toast = new bootstrap.Toast(toastElem);
+        toast.show();
+    }
+</script>
